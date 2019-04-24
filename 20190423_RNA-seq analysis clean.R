@@ -39,6 +39,8 @@ library("calibrate")
 library(sva)
 library(RSvgDevice)
 
+
+
 ####### 1a. Read raw count data from .txt file #######
 
 # Set working directory to location of files
@@ -151,6 +153,30 @@ g <- autoplot(combat.pca, data = SeqDesign, colour = 'construct', shape = 'donor
 )
 print(g)
 dev.off()
+
+# tSNE
+library(caret)
+library(Rtsne)
+
+set.seed(9)
+combat.tsne <- Rtsne(t(combat), dims = 2, perplexity = 7)
+combat.tsne <- as.data.frame(combat.tsne$Y)
+
+tiff(file="tsne.tiff", units="in", width=7, height=5, res=300)
+g <- ggplot(combat.tsne, aes(x=V1, y=V2)) + 
+  geom_point(aes(size=0.25, color=SeqDesign$donor)) + 
+  geom_text(aes(label=SeqDesign$construct, hjust=0.25, vjust=0.25)) +
+  guides(colour=guide_legend(override.aes=list(size=4)),
+         size=guide_legend()) +
+  xlab("tSNE1") + ylab("tSNE2") +
+  ggtitle("t-SNE") +
+  theme_light(base_size=8) +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank())
+  #scale_colour_brewer(palette = "Set2")
+print(g)
+dev.off()
+
 
 ######### 5b. Heatmap of all differentially expressed genes ############
 

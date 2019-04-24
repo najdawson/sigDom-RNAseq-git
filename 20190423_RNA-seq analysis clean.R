@@ -4,6 +4,7 @@
 # edited: 20190423 by Nick 
 
 ## Input: raw count data
+## Output: List of differentially expressed genes for pathway analysis, PCA & heatmap analysis of samples
 
 # sources used: http://bioconductor.org/packages/devel/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#heatmap-of-the-count-matrix
 # http://www.bioconductor.org/help/workflows/rnaseqGene/

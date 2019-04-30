@@ -104,6 +104,7 @@ termTF <- gmtPathways("/home/german/Nick_Treg_project/RegNetworkStrong.gmt")
 limma_DGE_group_analysis <- function(expr_mat, meta_data, group1, group2){
   #Introducing the corresponding column to meta data 
   md <- meta_data
+  md <- md %>% filter(Construct %in% c(group1, group2))
   md$Analysis <- integer(nrow(md))
   md$Analysis[which(md$Construct %in% group1)] <- 1
   md$Analysis[which(md$Construct %in% group2)] <- 2
@@ -116,6 +117,9 @@ limma_DGE_group_analysis <- function(expr_mat, meta_data, group1, group2){
   contrastMatrix <- makeContrasts(
     A1 = Analysis1 - Analysis2,
     levels = colnames(designMatrix))
+  
+  #subsetting the corresponding samples
+  expr_mat <- expr_mat[,md$FileName]
   
   #voom -  estimates the mean-variance relationship and uses this to compute appropriate observation-level weights
   v <- voom(expr_mat, designMatrix, plot=FALSE)

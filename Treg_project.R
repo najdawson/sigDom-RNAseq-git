@@ -275,10 +275,11 @@ meta_data_f <- meta_data %>% filter(Construct %in% c(group1A1, group1A2))
 #topGenesRegulated <- cleaned_log_cpm_df[common_regulated_genes,]
 
 #correct for batch - in this case it's donor factor
-batch <- x$samples$Donor
+#batch <- x$samples$Donor
+batch <- meta_data_f$Donor
 lcpm.no.batches <- removeBatchEffect(log_cpm, batch)
 
-log_cpm_f <- lcpm.no.batches[, meta_data_f$FileName]
+log_cpm_f <- lcpm.no.batches
 colnames(log_cpm_f) <- meta_data_f$SampleName
 
 upRegulatedGenes <- upRegulatedGenes$gene

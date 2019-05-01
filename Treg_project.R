@@ -9,7 +9,8 @@ rm(list=ls())
 
 #loading required packages
 library(limma) 
-library(edgeR) 
+library(edgeR)
+library(ggplot2)
 library(dplyr)
 library(RColorBrewer)
 library(tibble)
@@ -18,6 +19,7 @@ library(pheatmap)
 library(sva)
 library(Rtsne)
 library(fgsea)
+library(stats)
 
 #Loading the data (change folders to apropriate paths)
 files <- list.files("~/Nick_Treg_project/SigDom RNAseq data/RNASeq counts/")
@@ -223,6 +225,7 @@ performDGEanalysis <- function(expr_mat, meta_data, group1, group2, termGO = NUL
   
   #saving results
   res <- list()
+  res[["DEgenesTable"]] <- DEgenes
   res[["upRegulatedGenes"]] <- upRegulatedGenes
   res[["downRegulatedGenes"]] <- downRegulatedGenes
   res[["Sign_Pos_Pathway"]] <- sign_pos_pathways
@@ -248,6 +251,8 @@ group1A2 <- c("3zeta", "C4mut", "C4wt", "GITR", "OX40", "PD1") #Treg
 DGEres <- performDGEanalysis(x, meta_data, group1A1, group1A2, termGO = termGO,
                              termTF = termTF)
 
+#table with all genes and their scores
+DEgenes <- DGEres[["DEgenesTable"]]
 #up regulated genes in group1A1 compared to group1A2
 upRegulatedGenes <- DGEres[["upRegulatedGenes"]]
 #down regulated genes in group1A1 compared to group1A2
@@ -293,3 +298,33 @@ topGenesRegulated <- t(scale(t(topGenesRegulated)))
 pheatmap(topGenesRegulated, cluster_rows = T, cluster_cols = T, scale = "none", clustering_method = "ward.D2", 
          clustering_distance_cols = "euclidean", show_colnames = T, show_rownames = FALSE, 
          main = "Clustering heatmap for top common regulated genes")
+
+################################################################################
+#Volcano plot construction
+ggplot(data = DEgenes, aes(x = logFC, y = -log(adj.P.Val), color = ((-log(adj.P.Val) > 3) & (logFC > 1 | logFC < -1))))+
+  scale_colour_manual(name = 'BH p-value < 0.05', values = setNames(c('red','black'),c(T, F)), labels = c("False", "True"))+
+  geom_point()+
+  geom_vline(xintercept=0)+
+  geom_vline(xintercept=-1)+
+  geom_vline(xintercept=1)+
+  geom_hline(yintercept=3)+
+  geom_text(aes(label = ifelse((-log(adj.P.Val) > 23) & (logFC > 1 | logFC < -1), gene, "")), vjust=-1, size = 3)+#(to visualize some of the genes, note overlaps)
+  geom_text(aes(label = ifelse((-log(adj.P.Val) > 10) & (logFC > 3 | logFC < -3), gene, "")), vjust=-1, size = 3)+
+  #xlim(-1.5,1.5)+
+  ylab("-log(p-value)")+
+  xlab("logFC")+
+  labs(title="Gene expression differences in two groups")+
+  theme_bw()+
+  theme(axis.line = element_line(colour = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        #panel.border = element_blank(),
+        panel.background = element_blank()) +
+  theme(axis.title.x=element_text(size=12),
+        axis.text.y=element_text(size=12),
+        axis.title.y=element_text(size=14),
+        axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size=14),
+        strip.background = element_rect(colour="white", fill="white"),
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10))

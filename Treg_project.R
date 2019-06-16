@@ -22,9 +22,10 @@ library(fgsea)
 library(stats)
 
 #Loading the data (change folders to apropriate paths)
-files <- list.files("~/Nick_Treg_project/SigDom RNAseq data/RNASeq counts/")
-x <- readDGE(files, path = "~/Nick_Treg_project/SigDom RNAseq data/RNASeq counts/", columns=c(1,2)) 
-x$counts <- x$counts[1:(nrow(x$counts)-2),]
+files <- list.files("/home/german/Nick_Treg_project/Nick_filtered_counts/counts/")
+x <- readDGE(files, path = "/home/german/Nick_Treg_project/Nick_filtered_counts/counts/", columns=c(1,2)) 
+#removing meta tags
+x$counts <- x$counts[1:(nrow(x$counts)-5),]
 
 #Loading metadata and specifying sex factor variable
 meta_data <- read.table(file = "~/Nick_Treg_project/SigDom RNAseq data/CAR-Treg RNAseq sample info.csv", sep=",", header=T, row.names = 1)
@@ -33,12 +34,20 @@ sex <-meta_data$Donor
 sex[sex %in% c(9649, 967)] <- "F"
 sex[sex %in% c(960)] <- "M"
 meta_data$sex <- sex
+meta_data$FileName <- sapply(as.character(meta_data$FileName), 
+                             function(x){ 
+                               paste(unlist(strsplit(x, split="[.]"))[1], "counts", sep=".") 
+                               })
+
+x$counts <- x$counts[,meta_data$FileName]
+x$samples <- x$samples[meta_data$FileName,]
+
 group <- meta_data$Construct
 x$samples$group <- group
 
 #Filtering lowly expressed genes
 keep.exprs <- filterByExpr(x, group=group)
-x <- x[keep.exprs,, keep.lib.sizes=FALSE] #13818    48
+x <- x[keep.exprs,, keep.lib.sizes=FALSE] #14098    48
 
 #Normalizing for the library size
 x <- calcNormFactors(x, method = "TMM")
@@ -65,37 +74,43 @@ meta_data$sex <- as.factor(meta_data$sex)
 meta_data$Donor <- as.factor(meta_data$Donor)
 
 #Different questions and corresponding groups for analysis
-#1 Which transcriptional pathways are differentially activated in CARs that work in vivo vs. those that don’t.
-# Analysis A: (remove CARs that destabilize Treg phenotype after stim)
-group1A1 <- c("CD28wt", "CD28mut") #Treg
-group1A2 <- c("3zeta", "C4mut", "C4wt", "GITR", "OX40", "PD1") #Treg
-# Analysis B: (all constructs)
-group1B1 <- c("CD28wt", "CD28mut") #Treg
-group1B2 <- c("3zeta", "41BB", "C4mut", "C4wt", "GITR", "ICOS", "OX40", "PD1", "TNFR2") #Treg
+#1 Which transcriptional pathways are differentially activated in CARs that work in vivo vs. those that don’t. Try two separate analyses:
+# Analysis A: (stringent analysis)
+group1A1 <- c("CD28wt") 
+group1A2 <- c("PD1", "TNFR2", "C4wt", "C4mut", "3zeta") 
+# Analysis B: (less stringent analysis)
+group1B1 <- c("CD28wt") 
+group1B2 <- c("PD1", "TNFR2", "C4wt", "C4mut", "3zeta", "41BB", "OX40", "ICOS") #Treg
 
 #2 Why do 41BB/TNFR2 destabilize Treg phenotype after CAR stimulation?
 #Analysis A: (top performing CARs)
-group2A1 <- c("41BB", "TNFR2") #Treg
-group2A2 <- c("CD28wt", "CD28mut") #Treg
-#Analysis B: (all constructs)
-group2B1 <- c("41BB", "TNFR2") #Treg
-group2B2 <- c("3zeta", "C4mut", "C4wt", "GITR", "ICOS", "OX40", "PD1", "CD28wt", "CD28mut") #Treg
+group2A1 <- c("41BB", "TNFR2") 
+group2A2 <- c("CD28wt") 
 
-#3 Which transcriptional pathways are differentially activated in a TCR stim vs a CAR stim
+#3 Why does CD28wt stimulate proliferation and suppression but CD28mut does not? 
 #Analysis A: (Tregs)
-group3A1 <- c("CD28wt") #Treg
-group3A2 <- c("NGFR") #Treg
-#Analysis B: (Tconv)
-group3B1 <- c("CD28wt_Tconv") #Tconv
-group3B2 <- c("NGFR_Tconv") #Tconv
+group3A1 <- c("CD28wt") 
+group3A2 <- c("CD28mut") 
 
-#4 Which transcriptional pathways are differentially activated in Treg vs Tconv CAR stimulation?
-group4A1 <- c("CD28wt") #Tconv
-group4A2 <- c("CD28_Tconv") #Tconv
+#4 Why does CD3zeta-only activate CAR stimulation but PD1+CD3zeta does not?
+group4A1 <- c("3zeta") 
+group4A2 <- c("PD1") 
+
+#5 Which transcriptional pathways are differentially activated in a TCR stim vs a CAR stim:
+group5A1 <- c("CD28wt") 
+group5A2 <- c("NGFR") 
+
+group5B1 <- c("CD28wt_Tconv") 
+group5B2 <- c("NGFR_Tconv") 
+
+#6 Which transcriptional pathways are differentially activated in Treg vs Tconv CAR stimulation? 
+group6A1 <- c("CD28wt") 
+group6A2 <- c("CD28wt_Tconv") 
 
 #Loading gmt files for enrichment analysis
 termGO <- gmtPathways("/home/german/Nick_Treg_project/Human_GOBP_AllPathways_no_GO_iea_April_01_2019_symbol.gmt")
 termTF <- gmtPathways("/home/german/Nick_Treg_project/RegNetworkStrong.gmt")
+termH <- gmtPathways("/home/german/Nick_Treg_project/h.all.v6.2.symbols.gmt")
 
 ###############################
 #Help functions
@@ -155,16 +170,24 @@ limma_DGE_group_analysis <- function(expr_mat, meta_data, group1, group2){
 #terms is required - it's a gmt file with TF targets or Pathway terms
 enrichmentAnalysis <- function(DEgenes, TF = F, terms = NULL, minsize){
   
+  gseaInputGeneScores <- DEgenes %>%
+    dplyr::select("logFC", "adj.P.Val", "gene")
+  
+  gseaInputGeneScores$Sign <- sapply(gseaInputGeneScores$logFC, sign)
+  gseaInputGeneScores$LogPvalue <- sapply(gseaInputGeneScores$adj.P.Val, function(x){ -log10(x) })
+  gseaInputGeneScores$Score <- gseaInputGeneScores$Sign * gseaInputGeneScores$LogPvalue 
+  
   #create ranked list of genes
-  gseaInputGeneScores <- DEgenes %>% 
+  #gseaInputGeneScores <- DEgenes %>% 
     #mutate(absolute_logFC = abs(logFC)) %>% 
-    dplyr::select(gene, logFC) %>% 
-    na.omit() %>% 
-    as.data.frame()
+    #dplyr::select(gene, t) %>% 
+    #na.omit() %>% 
+    #as.data.frame()
   
   genes <- gseaInputGeneScores$gene
-  gseaInputGeneScores <- gseaInputGeneScores$logFC
+  gseaInputGeneScores <- gseaInputGeneScores$Score
   names(gseaInputGeneScores) <- genes
+  gseaInputGeneScores <- sort(gseaInputGeneScores, decreasing = T)
   #write(genes, file="~/Desktop/genes.txt")
   
   #perform GSEA 
@@ -192,7 +215,7 @@ enrichmentAnalysis <- function(DEgenes, TF = F, terms = NULL, minsize){
 #MAIN DGE FUNCTION
 #######################################################
 performDGEanalysis <- function(expr_mat, meta_data, group1, group2, termGO = NULL,
-                               termTF = NULL){
+                               termTF = NULL, termH = NULL){
   #perform DGE analysis with limma
   test <- limma_DGE_group_analysis(expr_mat, meta_data, group1, group2)
   print("Done with limma analysis")
@@ -215,10 +238,16 @@ performDGEanalysis <- function(expr_mat, meta_data, group1, group2, termGO = NUL
   print("Done with Pathways enrichment")
   sign_pos_pathways <- enrichedGoPathways[["Sign_Pos"]]
   sign_neg_pathways <- enrichedGoPathways[["Sign_Neg"]]
+  
   enrichedTFs <- enrichmentAnalysis(DEgenes, TF = T, terms = termTF, minsize = 5)
   print("Done with TFs enrichment")
   sign_pos_TF <- enrichedTFs[["Sign_Pos"]]
   sign_neg_TF <- enrichedTFs[["Sign_Neg"]]
+  
+  enrichedHPathways <- enrichmentAnalysis(DEgenes, TF = F, terms = termH, minsize = 15)
+  print("Done with Hallmark Pathways enrichment")
+  sign_pos_pathwaysH <- enrichedHPathways[["Sign_Pos"]]
+  sign_neg_pathwaysH <- enrichedHPathways[["Sign_Neg"]]
   
   #genes for GOrilla analysis (or any other GO enrichment tool)
   genes <- enrichedGoPathways[["Genes"]]
@@ -230,6 +259,8 @@ performDGEanalysis <- function(expr_mat, meta_data, group1, group2, termGO = NUL
   res[["downRegulatedGenes"]] <- downRegulatedGenes
   res[["Sign_Pos_Pathway"]] <- sign_pos_pathways
   res[["Sign_Neg_Pathway"]] <- sign_neg_pathways
+  res[["Sign_HALLMARK_Pos_Pathway"]] <- sign_pos_pathwaysH
+  res[["Sign_HALLMARK_Neg_Pathway"]] <- sign_neg_pathwaysH
   res[["Sign_Pos_TF"]] <- sign_pos_TF
   res[["Sign_Neg_TF"]] <- sign_neg_TF
   res[["genes"]] <- genes
@@ -248,8 +279,8 @@ performDGEanalysis <- function(expr_mat, meta_data, group1, group2, termGO = NUL
 group1A1 <- c("CD28wt", "CD28mut") #Treg
 group1A2 <- c("3zeta", "C4mut", "C4wt", "GITR", "OX40", "PD1") #Treg
 
-DGEres <- performDGEanalysis(x, meta_data, group1A1, group1A2, termGO = termGO,
-                             termTF = termTF)
+DGEres <- performDGEanalysis(x, meta_data, group2A1, group2A2, termGO = termGO,
+                             termTF = termTF, termH = termH)
 
 #table with all genes and their scores
 DEgenes <- DGEres[["DEgenesTable"]]
@@ -261,6 +292,12 @@ downRegulatedGenes <- DGEres[["downRegulatedGenes"]]
 sign_pos_pathways <- DGEres[["Sign_Pos_Pathway"]]
 #pathways negatively enriched in group1A1 compared to group1A2
 sign_neg_pathways <- DGEres[["Sign_Neg_Pathway"]]
+
+#pathways positively enriched in group1A1 compared to group1A2
+sign_pos_pathwaysH <- DGEres[["Sign_HALLMARK_Pos_Pathway"]]
+#pathways negatively enriched in group1A1 compared to group1A2
+sign_neg_pathwaysH <- DGEres[["Sign_HALLMARK_Neg_Pathway"]]
+
 #Transcription factors positively enriched in group1A1 compared to group1A2
 sign_pos_TF <- DGEres[["Sign_Pos_TF"]]
 #Transcription factors negatively enriched in group1A1 compared to group1A2
@@ -273,10 +310,20 @@ dt <- DGEres[["DecisionTable"]]
 #log cpm matrix for heat map construction
 log_cpm <- DGEres[["LogCPM"]]
 
+#saving data
+write.table(upRegulatedGenes, file="~/Nick_Treg_project/DE_genes/upRegulated_genes_group6A.txt", sep="\t", row.names = F)
+write.table(downRegulatedGenes, file="~/Nick_Treg_project/DE_genes/downRegulated_genes_group6A.txt", sep="\t", row.names = F)
+
+write.table(sign_pos_pathwaysH[,-8], file="~/Nick_Treg_project/PathwaysHallmark/posPathways_group6A.txt", sep="\t", row.names = F)
+write.table(sign_neg_pathwaysH[,-8], file="~/Nick_Treg_project/PathwaysHallmark/negPathways_group6A.txt", sep="\t", row.names = F)
+
+write.table(sign_pos_pathways[,-8], file="~/Nick_Treg_project/Pathways/posPathways_group6A.txt", sep="\t", row.names = F)
+write.table(sign_neg_pathways[,-8], file="~/Nick_Treg_project/Pathways/negPathways_group6A.txt", sep="\t", row.names = F)
+
 ################################################################################
 #heatmap construction
 #filtering meta data to groups only
-meta_data_f <- meta_data %>% filter(Construct %in% c(group1A1, group1A2))
+meta_data_f <- meta_data %>% filter(Construct %in% c(group6A1, group6A2))
 #topGenesRegulated <- cleaned_log_cpm_df[common_regulated_genes,]
 
 #correct for batch - in this case it's donor factor
@@ -308,8 +355,8 @@ ggplot(data = DEgenes, aes(x = logFC, y = -log(adj.P.Val), color = ((-log(adj.P.
   geom_vline(xintercept=-1)+
   geom_vline(xintercept=1)+
   geom_hline(yintercept=3)+
-  geom_text(aes(label = ifelse((-log(adj.P.Val) > 23) & (logFC > 1 | logFC < -1), gene, "")), vjust=-1, size = 3)+#(to visualize some of the genes, note overlaps)
-  geom_text(aes(label = ifelse((-log(adj.P.Val) > 10) & (logFC > 3 | logFC < -3), gene, "")), vjust=-1, size = 3)+
+  geom_text(aes(label = ifelse((-log(adj.P.Val) > 7) & (logFC > 1 | logFC < -1), gene, "")), vjust=-1, size = 3)+#(to visualize some of the genes, note overlaps)
+  #geom_text(aes(label = ifelse((-log(adj.P.Val) > 10) & (logFC > 3 | logFC < -3), gene, "")), vjust=-1, size = 3)+
   #xlim(-1.5,1.5)+
   ylab("-log(p-value)")+
   xlab("logFC")+

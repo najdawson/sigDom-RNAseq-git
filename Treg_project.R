@@ -14,12 +14,11 @@ library(ggplot2)
 library(dplyr)
 library(RColorBrewer)
 library(tibble)
-library(ermineR)
 library(pheatmap)
 library(sva)
-library(Rtsne)
 library(fgsea)
 library(stats)
+library(gplots)
 
 #Loading the data (change folders to apropriate paths)
 files <- list.files("/home/german/Nick_Treg_project/Nick_filtered_counts/counts/")
@@ -84,8 +83,8 @@ group1B2 <- c("PD1", "TNFR2", "C4wt", "C4mut", "3zeta", "41BB", "OX40", "ICOS") 
 
 #2 Why do 41BB/TNFR2 destabilize Treg phenotype after CAR stimulation?
 #Analysis A: (top performing CARs)
-group2A1 <- c("41BB", "TNFR2") 
-group2A2 <- c("CD28wt") 
+group2A1 <- c("CD28wt") 
+group2A2 <- c("41BB", "TNFR2") 
 
 #3 Why does CD28wt stimulate proliferation and suppression but CD28mut does not? 
 #Analysis A: (Tregs)
@@ -276,10 +275,7 @@ performDGEanalysis <- function(expr_mat, meta_data, group1, group2, termGO = NUL
 #Let's say we want to answer - Which transcriptional pathways are differentially activated in CARs that work in vivo vs. those that don’t.
 #Our groups - (CD28wt, CD28mut) AND (3zeta, C4mut, C4wt, GITR, OX40, PD1)
 
-group1A1 <- c("CD28wt", "CD28mut") #Treg
-group1A2 <- c("3zeta", "C4mut", "C4wt", "GITR", "OX40", "PD1") #Treg
-
-DGEres <- performDGEanalysis(x, meta_data, group2A1, group2A2, termGO = termGO,
+DGEres <- performDGEanalysis(x, meta_data, group6A1, group6A2, termGO = termGO,
                              termTF = termTF, termH = termH)
 
 #table with all genes and their scores
@@ -310,9 +306,13 @@ dt <- DGEres[["DecisionTable"]]
 #log cpm matrix for heat map construction
 log_cpm <- DGEres[["LogCPM"]]
 
+
 #saving data
 write.table(upRegulatedGenes, file="~/Nick_Treg_project/DE_genes/upRegulated_genes_group6A.txt", sep="\t", row.names = F)
 write.table(downRegulatedGenes, file="~/Nick_Treg_project/DE_genes/downRegulated_genes_group6A.txt", sep="\t", row.names = F)
+
+write.table(sign_pos_TF[,-8], file="~/Nick_Treg_project/TF/posTF_group6A.txt", sep="\t", row.names = F)
+write.table(sign_neg_TF[,-8], file="~/Nick_Treg_project/TF/negTF_group6A.txt", sep="\t", row.names = F)
 
 write.table(sign_pos_pathwaysH[,-8], file="~/Nick_Treg_project/PathwaysHallmark/posPathways_group6A.txt", sep="\t", row.names = F)
 write.table(sign_neg_pathwaysH[,-8], file="~/Nick_Treg_project/PathwaysHallmark/negPathways_group6A.txt", sep="\t", row.names = F)
@@ -342,7 +342,13 @@ topGenesRegulated <- log_cpm_f[common_regulated_genes,]
 topGenesRegulated <- t(scale(t(topGenesRegulated)))
 
 #creating a heatmap with pheatmap (no clustering because we ordered samples by time point)
-pheatmap(topGenesRegulated, cluster_rows = T, cluster_cols = T, scale = "none", clustering_method = "ward.D2", 
+pheatmap(topGenesRegulated, cluster_rows = T, cluster_cols = T, 
+         color=bluered(21), scale = "none", clustering_method = "ward.D2", 
+         clustering_distance_cols = "euclidean", show_colnames = T, show_rownames = FALSE, 
+        main = "Clustering heatmap for top common regulated genes")
+
+pheatmap(topGenesRegulated, cluster_rows = T, cluster_cols = T, 
+         scale = "none", clustering_method = "ward.D2", 
          clustering_distance_cols = "euclidean", show_colnames = T, show_rownames = FALSE, 
          main = "Clustering heatmap for top common regulated genes")
 
@@ -355,7 +361,8 @@ ggplot(data = DEgenes, aes(x = logFC, y = -log(adj.P.Val), color = ((-log(adj.P.
   geom_vline(xintercept=-1)+
   geom_vline(xintercept=1)+
   geom_hline(yintercept=3)+
-  geom_text(aes(label = ifelse((-log(adj.P.Val) > 7) & (logFC > 1 | logFC < -1), gene, "")), vjust=-1, size = 3)+#(to visualize some of the genes, note overlaps)
+  #geom_text(aes(label = ifelse((-log(adj.P.Val) > 3) & (logFC > 1 | logFC < -1), gene, "")), vjust=-1, size = 3)+
+  geom_text(aes(label = ifelse((-log(adj.P.Val) > 5) & (logFC > 2.5 | logFC < -2.5), gene, "")), vjust=-1, size = 3)+#(to visualize some of the genes, note overlaps)
   #geom_text(aes(label = ifelse((-log(adj.P.Val) > 10) & (logFC > 3 | logFC < -3), gene, "")), vjust=-1, size = 3)+
   #xlim(-1.5,1.5)+
   ylab("-log(p-value)")+

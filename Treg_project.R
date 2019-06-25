@@ -19,6 +19,7 @@ library(sva)
 library(fgsea)
 library(stats)
 library(gplots)
+library(RSvgDevice)
 
 #Loading the data (change folders to apropriate paths)
 files <- list.files("/home/german/Nick_Treg_project/Nick_filtered_counts/counts/")
@@ -203,6 +204,8 @@ enrichmentAnalysis <- function(DEgenes, TF = F, terms = NULL, minsize){
   #saving resulting data frames to list
   res <- list()
   res[["Genes"]] <- genes
+  res[["Enrichment"]] <- fgseaRes
+  res[["Scores"]] <- gseaInputGeneScores
   res[["Sign_Pos"]] <- sign_pos
   res[["Sign_Neg"]] <- sign_neg
   return(res)
@@ -242,6 +245,8 @@ performDGEanalysis <- function(expr_mat, meta_data, group1, group2, termGO = NUL
   print("Done with TFs enrichment")
   sign_pos_TF <- enrichedTFs[["Sign_Pos"]]
   sign_neg_TF <- enrichedTFs[["Sign_Neg"]]
+  TFfgsea <- enrichedTFs[["Enrichment"]]
+  TFscores <- enrichedTFs[["Scores"]]
   
   enrichedHPathways <- enrichmentAnalysis(DEgenes, TF = F, terms = termH, minsize = 15)
   print("Done with Hallmark Pathways enrichment")
@@ -262,11 +267,88 @@ performDGEanalysis <- function(expr_mat, meta_data, group1, group2, termGO = NUL
   res[["Sign_HALLMARK_Neg_Pathway"]] <- sign_neg_pathwaysH
   res[["Sign_Pos_TF"]] <- sign_pos_TF
   res[["Sign_Neg_TF"]] <- sign_neg_TF
+  res[["TF_enrichment"]] <- TFfgsea
+  res[["TF_scores"]] <- TFscores
   res[["genes"]] <- genes
   res[["DecisionTable"]] <- dt
   res[["LogCPM"]] <- log_cpm
   return(res)
 }
+
+#############################################################################################################
+#GET THE MOST VARIABLE GENES
+#############################################################################################################
+library(DESeq); library(statmod); library(pcaMethods); library(fastICA)
+
+#To get normalized expression magnitudes
+lib.size <- estimateSizeFactorsForMatrix(x$counts)
+ed <- t(t(x$counts)/lib.size)
+
+#Calculate estimates of variance, coefficient of variation
+means <- rowMeans(ed)
+vars <- apply(ed,1,var)
+cv2 <- vars/means^2
+
+#Now fit a regression line based on the controls:
+minMeanForFit <- unname( quantile( means[ which( cv2 > .3 ) ], .95 ) )
+useForFit <- means >= minMeanForFit # & spikeins
+fit <- glmgam.fit( cbind( a0 = 1, a1tilde = 1/means[useForFit] ),cv2[useForFit] )
+a0 <- unname( fit$coefficients["a0"] )
+a1 <- unname( fit$coefficients["a1tilde"])
+df <- ncol(ed) - 1
+
+#Rank genes by the significance of deviation from the fit
+afit <- a1/means+a0
+varFitRatio <- vars/(afit*means^2)
+varorder <- order(varFitRatio,decreasing=T)
+oed <- ed[varorder,]
+
+#We can also evaluate statistical significance of the deviation
+pval <- pchisq(varFitRatio*df,df=df,lower.tail=F)
+adj.pval <- p.adjust(pval,"fdr")
+sigVariedGenes <- adj.pval<1e-3;
+#table(sigVariedGenes)
+
+#heatmap construction
+batch <- meta_data$Donor
+log_cpm <- cpm(x, log=TRUE)
+lcpm.no.batches <- removeBatchEffect(log_cpm, batch)
+
+log_cpm_f <- lcpm.no.batches
+colnames(log_cpm_f) <- meta_data$SampleName
+
+#NGFR_unstim, PD1, 41BB, TNFR2, NGFR, OX40, GITR, C4mut, 3zeta, C4wt, NGFR_Tconv, CD28wt_Tconv, NGFR_unstim_Tconv, ICOS, CD28mut, CD28wt
+col.order <- c("9649.NGFR_unstim", "960.NGFR_unstim", "967.NGFR_unstim", "9649.PD1", "960.PD1", "967.PD1", "9649.41BB", "960.41BB", "967.41BB",
+               "9649.TNFR2", "960.TNFR2", "967.TNFR2", "9649.OX40", "960.OX40", "967.OX40", 
+               "9649.GITR", "960.GITR", "967.GITR", "9649.C4mut", "960.C4mut", "967.C4mut", "9649.3zeta", "960.3zeta", "967.3zeta",
+               "9649.C4wt", "960.C4wt", "967.C4wt",
+               "9649.ICOS", "960.ICOS", "967.ICOS", "9649.CD28mut", "960.CD28mut", "967.CD28mut", 
+               "9649.CD28wt", "960.CD28wt", "967.CD28wt", "9649.NGFR", "960.NGFR", "967.NGFR")
+
+samples <- c("NGFR_unstim", "NGFR_unstim", "NGFR_unstim", "PD1", "PD1", "PD1", "41BB", "41BB", "41BB",
+               "TNFR2", "TNFR2", "TNFR2", "OX40", "OX40", "OX40", 
+               "GITR", "GITR", "GITR", "C4mut", "C4mut", "C4mut", "3zeta", "3zeta", "3zeta",
+               "C4wt", "C4wt", "C4wt", 
+               "ICOS", "ICOS", "ICOS", "CD28mut", "CD28mut", "CD28mut", "CD28wt", "CD28wt", "CD28wt",
+               "NGFR", "NGFR", "NGFR")
+
+log_cpm_f <- log_cpm_f[,col.order]
+
+varGenes <- log_cpm_f[rownames(oed[1:25,]),]
+#scaling the data (without it in pheatmap specify scale = "row")
+varGenes <- t(scale(t(varGenes)))
+
+my_sample_col <- data.frame(sample = samples)
+row.names(my_sample_col) <- colnames(log_cpm_f)
+
+#creating a heatmap with pheatmap (no clustering because we ordered samples by time point)
+devSVG(file = "~/Nick_Treg_project/SVG_heatmaps/heatmap_RB_var_25ann.svg")
+pheatmap(varGenes, cluster_rows = T, cluster_cols = F, 
+         color=bluered(21), scale = "none", clustering_method = "ward.D2", 
+         clustering_distance_cols = "euclidean", show_colnames = T, show_rownames = T, 
+         annotation_col = my_sample_col,
+         main = "25 most variable genes")
+dev.off()
 
 #############################################################################################################
 #EXAMPLE OF THE ANALYSIS
@@ -275,7 +357,17 @@ performDGEanalysis <- function(expr_mat, meta_data, group1, group2, termGO = NUL
 #Let's say we want to answer - Which transcriptional pathways are differentially activated in CARs that work in vivo vs. those that don’t.
 #Our groups - (CD28wt, CD28mut) AND (3zeta, C4mut, C4wt, GITR, OX40, PD1)
 
-DGEres <- performDGEanalysis(x, meta_data, group6A1, group6A2, termGO = termGO,
+#1A
+#1B
+#2A
+#3A
+#4A
+#5A
+#5B
+#6A
+groupAll <- c("PD1", "41BB", "TNFR2", "NGFR", "OX40", "GITR", "C4mut", "3zeta", "C4wt", "ICOS", "CD28mut", "CD28wt")
+groupCtrl <- c("NGFR_unstim") 
+DGEres <- performDGEanalysis(x, meta_data, groupAll, groupCtrl, termGO = termGO,
                              termTF = termTF, termH = termH)
 
 #table with all genes and their scores
@@ -294,6 +386,9 @@ sign_pos_pathwaysH <- DGEres[["Sign_HALLMARK_Pos_Pathway"]]
 #pathways negatively enriched in group1A1 compared to group1A2
 sign_neg_pathwaysH <- DGEres[["Sign_HALLMARK_Neg_Pathway"]]
 
+TFgsea <- DGEres[["TF_enrichment"]]
+TFscores <- DGEres[["TF_scores"]]
+
 #Transcription factors positively enriched in group1A1 compared to group1A2
 sign_pos_TF <- DGEres[["Sign_Pos_TF"]]
 #Transcription factors negatively enriched in group1A1 compared to group1A2
@@ -305,7 +400,6 @@ write(genes, file="~/Desktop/genes.txt") #save them to file and provide as input
 dt <- DGEres[["DecisionTable"]]
 #log cpm matrix for heat map construction
 log_cpm <- DGEres[["LogCPM"]]
-
 
 #saving data
 write.table(upRegulatedGenes, file="~/Nick_Treg_project/DE_genes/upRegulated_genes_group6A.txt", sep="\t", row.names = F)
@@ -323,7 +417,7 @@ write.table(sign_neg_pathways[,-8], file="~/Nick_Treg_project/Pathways/negPathwa
 ################################################################################
 #heatmap construction
 #filtering meta data to groups only
-meta_data_f <- meta_data %>% filter(Construct %in% c(group6A1, group6A2))
+meta_data_f <- meta_data %>% filter(Construct %in% c(groupAll, groupCtrl))
 #topGenesRegulated <- cleaned_log_cpm_df[common_regulated_genes,]
 
 #correct for batch - in this case it's donor factor
@@ -336,24 +430,31 @@ colnames(log_cpm_f) <- meta_data_f$SampleName
 
 upRegulatedGenes <- upRegulatedGenes$gene
 downRegulatedGenes <- downRegulatedGenes$gene
-common_regulated_genes <- c(upRegulatedGenes, downRegulatedGenes)
+common_regulated_genes <- c(upRegulatedGenes[1:25], downRegulatedGenes[1:25])
 topGenesRegulated <- log_cpm_f[common_regulated_genes,]
+topGenesRegulated <- topGenesRegulated[,col.order]
 #scaling the data (without it in pheatmap specify scale = "row")
 topGenesRegulated <- t(scale(t(topGenesRegulated)))
 
 #creating a heatmap with pheatmap (no clustering because we ordered samples by time point)
-pheatmap(topGenesRegulated, cluster_rows = T, cluster_cols = T, 
+devSVG(file = "~/Nick_Treg_project/SVG_heatmaps/heatmap_RB_DE_all_ctrl_50.svg")
+pheatmap(topGenesRegulated, cluster_rows = T, cluster_cols = F, 
          color=bluered(21), scale = "none", clustering_method = "ward.D2", 
-         clustering_distance_cols = "euclidean", show_colnames = T, show_rownames = FALSE, 
-        main = "Clustering heatmap for top common regulated genes")
+         clustering_distance_cols = "euclidean", show_colnames = T, show_rownames = T, 
+         annotation_col = my_sample_col,
+        main = "Clustering heatmap for 50 common regulated genes")
+dev.off()
 
+devSVG(file = "~/Nick_Treg_project/SVG_heatmaps/heatmap_6A.svg")
 pheatmap(topGenesRegulated, cluster_rows = T, cluster_cols = T, 
          scale = "none", clustering_method = "ward.D2", 
          clustering_distance_cols = "euclidean", show_colnames = T, show_rownames = FALSE, 
          main = "Clustering heatmap for top common regulated genes")
+dev.off()
 
 ################################################################################
 #Volcano plot construction
+devSVG(file = "~/Nick_Treg_project/SVG_volcano/volcano_6A.svg")
 ggplot(data = DEgenes, aes(x = logFC, y = -log(adj.P.Val), color = ((-log(adj.P.Val) > 3) & (logFC > 1 | logFC < -1))))+
   scale_colour_manual(name = 'BH p-value < 0.05', values = setNames(c('red','black'),c(T, F)), labels = c("False", "True"))+
   geom_point()+
@@ -362,7 +463,7 @@ ggplot(data = DEgenes, aes(x = logFC, y = -log(adj.P.Val), color = ((-log(adj.P.
   geom_vline(xintercept=1)+
   geom_hline(yintercept=3)+
   #geom_text(aes(label = ifelse((-log(adj.P.Val) > 3) & (logFC > 1 | logFC < -1), gene, "")), vjust=-1, size = 3)+
-  geom_text(aes(label = ifelse((-log(adj.P.Val) > 5) & (logFC > 2.5 | logFC < -2.5), gene, "")), vjust=-1, size = 3)+#(to visualize some of the genes, note overlaps)
+  geom_text(aes(label = ifelse((-log(adj.P.Val) > 5) | (logFC > 2.5 | logFC < -2.5), gene, "")), vjust=-1, size = 3)+#(to visualize some of the genes, note overlaps)
   #geom_text(aes(label = ifelse((-log(adj.P.Val) > 10) & (logFC > 3 | logFC < -3), gene, "")), vjust=-1, size = 3)+
   #xlim(-1.5,1.5)+
   ylab("-log(p-value)")+
@@ -382,3 +483,4 @@ ggplot(data = DEgenes, aes(x = logFC, y = -log(adj.P.Val), color = ((-log(adj.P.
         strip.background = element_rect(colour="white", fill="white"),
         legend.text=element_text(size=10),
         legend.title=element_text(size=10))
+dev.off()

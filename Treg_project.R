@@ -430,7 +430,7 @@ colnames(log_cpm_f) <- meta_data_f$SampleName
 
 upRegulatedGenes <- upRegulatedGenes$gene
 downRegulatedGenes <- downRegulatedGenes$gene
-common_regulated_genes <- c(upRegulatedGenes[1:25], downRegulatedGenes[1:25])
+common_regulated_genes <- c(upRegulatedGenes[1:50], downRegulatedGenes[1:50])
 topGenesRegulated <- log_cpm_f[common_regulated_genes,]
 topGenesRegulated <- topGenesRegulated[,col.order]
 #scaling the data (without it in pheatmap specify scale = "row")

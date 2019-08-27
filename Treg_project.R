@@ -23,7 +23,7 @@ library(RSvgDevice)
 
 #Loading the data (change folders to apropriate paths)
 files <- list.files("/home/german/Nick_Treg_project/Nick_filtered_counts/counts/")
-x <- readDGE(files, path = "/home/german/Nick_Treg_project/Nick_filtered_counts/counts/", columns=c(1,2)) 
+x <- readDGE(files, path = "/home/german/Nick_Treg_project/Nick_filtered_counts/counts/", columns=c(1,2), header=F) 
 #removing meta tags
 x$counts <- x$counts[1:(nrow(x$counts)-5),]
 
@@ -79,6 +79,8 @@ meta_data$Donor <- as.factor(meta_data$Donor)
 group1A1 <- c("CD28wt") 
 group1A2 <- c("PD1", "TNFR2", "C4wt", "C4mut", "3zeta") 
 # Analysis B: (less stringent analysis)
+group1B1 <- c("CD28wt") 
+group1B2 <- c("PD1", "TNFR2", "C4wt", "C4mut", "3zeta", "41BB", "OX40", "ICOS") #Treg
 
 #2 Why do 41BB/TNFR2 destabilize Treg phenotype after CAR stimulation?
 #Analysis A: (top performing CARs)
